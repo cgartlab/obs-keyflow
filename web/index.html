@@ -7,6 +7,8 @@
   obs-keyflow 叠加画面（OBS 浏览器源）
   URL 参数：
     ?n=5          显示最近几个按键（默认 5）
+    ?ttl=3000     每个键帽出现后多久消失 ms（默认 3000 = 3 秒）
+    ?fade=600     消失前最后多久开始淡出 ms（默认 600）
     ?size=64      键帽尺寸 px（默认 64）
     ?bottom=44    距画面底部距离 px（默认 44）
     ?gap=10       键帽间距 px（默认 10）
@@ -54,9 +56,11 @@
     background: var(--glass);
     border: 1px solid var(--edge);
     box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    display: none;              /* 未按键时不占画面 */
+    opacity: 0;                          /* 无内容时整条淡出，不占画面 */
+    pointer-events: none;
+    transition: opacity .12s linear;
   }
-  #dock.show { display: block; }
+  #dock.show { opacity: 1; }
 
   /* ---------- 模式一：最近按键 ---------- */
   #strip {
@@ -83,7 +87,7 @@
     text-transform: uppercase;
     letter-spacing: 0.01em;
     transition: background .09s ease, color .09s ease, box-shadow .09s ease,
-                border-color .09s ease, opacity .28s ease, transform .09s ease;
+                border-color .09s ease, transform .09s ease;
     user-select: none;
     white-space: nowrap;
   }
@@ -219,8 +223,12 @@
         .replace(/^numpad(\d)$/, 'Num$1')
         .toUpperCase();
 
-  // ---------- 模式一：最近按键（组合键用 + 连接） ----------
-  const entries = [];   // { parts: string[], held: bool, closed: bool }
+  // ---------- 模式一：最近按键（组合键用 + 连接，按 ?ttl 后淡出消失） ----------
+  const TTL_MS = Math.max(500, parseInt(qs.get('ttl') || '3000', 10) || 3000);
+  const FADE_MS = Math.max(150, Math.min(TTL_MS, parseInt(qs.get('fade') || '450', 10) || 450));
+  const TICK_MS = 33;
+
+  const entries = [];   // { parts, held, closed, ids, expires, el }
   const MOD_RANK = {
     controlleft: 0, controlright: 0,
     metaleft: 1, metaright: 1,
@@ -229,6 +237,7 @@
   };
   const isMod = (id) => Object.prototype.hasOwnProperty.call(MOD_RANK, id);
   let heldMods = [];
+  let ticker = null;
 
   function modsText() {
     const seen = new Set();
@@ -247,58 +256,133 @@
     return ' w3';
   }
 
-  function renderStrip() {
-    stripEl.innerHTML = '';
-    entries.forEach((e, i) => {
-      const cap = document.createElement('div');
-      cap.className = 'rcap' + sizeClass(e.parts) + (e.held ? ' on' : '');
-      const fromEnd = entries.length - 1 - i;
-      cap.style.opacity = String(Math.max(0.42, 1 - fromEnd * 0.145));
-      e.parts.forEach((p, idx) => {
-        if (idx > 0) {
-          const plus = document.createElement('span');
-          plus.className = 'plus';
-          plus.textContent = '+';
-          cap.appendChild(plus);
-        }
-        cap.appendChild(document.createTextNode(p));
-      });
-      if (fromEnd === 0) cap.classList.add('pop');
-      stripEl.appendChild(cap);
+  function fillCap(node, e) {
+    node.textContent = '';
+    e.parts.forEach((p, idx) => {
+      if (idx > 0) {
+        const plus = document.createElement('span');
+        plus.className = 'plus';
+        plus.textContent = '+';
+        node.appendChild(plus);
+      }
+      node.appendChild(document.createTextNode(p));
     });
-    dock.classList.toggle('show', entries.length > 0);
+    node.className = 'rcap' + sizeClass(e.parts) + (e.held ? ' on' : '');
   }
 
-  const lastEntry = () => entries[entries.length - 1];
+  function mount(e) {
+    e.el = document.createElement('div');
+    fillCap(e.el, e);
+    e.el.classList.add('pop');
+    stripEl.appendChild(e.el);
+    setTimeout(() => { if (e.el) e.el.classList.remove('pop'); }, 200);
+  }
+
+  // 每 33ms 重算剩余寿命：前段保持全亮，最后 fade 段线性淡出，归零即移除
+  function paint() {
+    const now = performance.now();
+    let maxTail = 0;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.held) e.expires = now + TTL_MS;      // 按住期间不计时
+      const remain = e.expires - now;
+      if (remain <= 0) {
+        if (e.el) e.el.remove();
+        entries.splice(i, 1);
+        continue;
+      }
+      if (e.el) {
+        e.el.classList.toggle('on', e.held);
+        const newest = i === entries.length - 1;
+        const base = newest ? 1 : 0.86;           // 旧的略暗，保留层次
+        const tail = Math.min(1, remain / FADE_MS);
+        maxTail = Math.max(maxTail, tail);
+        e.el.style.opacity = String(base * tail);
+      }
+    }
+    const alive = entries.length > 0;
+    dock.classList.toggle('show', alive);
+    // 胶囊整体跟着最后一批键帽一起淡出，避免留下一个空的黑条
+    dock.style.opacity = alive ? String(maxTail) : '';
+    if (!alive) stopTicker();
+  }
+
+  function startTicker() { if (!ticker && MODE === 'recent') ticker = setInterval(paint, TICK_MS); }
+  function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
+
+  function pushEntry(e) {
+    entries.push(e);
+    mount(e);
+    while (entries.length > SHOW_N) {
+      const gone = entries.shift();
+      if (gone.el) gone.el.remove();
+    }
+    startTicker();
+  }
 
   function onDown(id) {
+    const now = performance.now();
     if (isMod(id)) {
       if (!heldMods.includes(id)) heldMods.push(id);
       const parts = modsText();
-      const last = lastEntry();
-      if (last && !last.closed) { last.parts = parts; last.held = true; }
-      else { entries.push({ parts, held: true, closed: false }); }
+      const last = entries[entries.length - 1];
+      if (last && !last.closed) {                 // Ctrl → Ctrl+Shift 就地更新
+        last.parts = parts;
+        last.held = true;
+        last.ids.push(id);
+        last.expires = now + TTL_MS;
+        fillCap(last.el, last);
+      } else {
+        pushEntry({ parts, held: true, closed: false, ids: [id], expires: now + TTL_MS, el: null });
+      }
     } else {
       const parts = modsText().concat([pretty(id)]);
-      const last = lastEntry();
-      if (last && !last.closed) { last.parts = parts; last.held = true; last.closed = true; }
-      else { entries.push({ parts, held: true, closed: true }); }
+      const last = entries[entries.length - 1];
+      if (last && !last.closed) {                 // 悬空的修饰键 + 普通键 → 合成 Ctrl+C
+        last.parts = parts;
+        last.held = true;
+        last.closed = true;
+        last.ids.push(id);
+        last.expires = now + TTL_MS;
+        fillCap(last.el, last);
+      } else {
+        pushEntry({ parts, held: true, closed: true, ids: [id], expires: now + TTL_MS, el: null });
+      }
     }
-    while (entries.length > SHOW_N) entries.shift();
+    paint();
   }
 
   function onUp(id) {
     const mi = heldMods.indexOf(id);
     if (mi >= 0) heldMods.splice(mi, 1);
-    const last = lastEntry();
+    const now = performance.now();
+    const last = entries[entries.length - 1];
     if (!last) return;
     if (!last.closed) {
       const parts = modsText();
-      if (parts.length) { last.parts = parts; last.held = true; }
-      else { last.held = false; }
+      if (!parts.length) {                        // 只按了修饰键又松开 → 该枚直接退出
+        if (last.el) last.el.remove();
+        entries.pop();
+      } else {
+        last.parts = parts;
+        last.held = true;
+        last.expires = now + TTL_MS;
+        fillCap(last.el, last);
+      }
     } else {
       last.held = false;
+      last.expires = now + TTL_MS;                // 松开后开始倒计时
     }
+    paint();
+  }
+
+  function clearRecent() {
+    for (const e of entries) if (e.el) e.el.remove();
+    dock.style.opacity = '';
+    entries.length = 0;
+    heldMods = [];
+    stopTicker();
+    dock.classList.remove('show');
   }
 
   // ---------- 模式二：整块键盘 ----------
@@ -377,6 +461,7 @@
     const fit = () => root.style.setProperty('--u', (keysEl.clientWidth / 15) + 'px');
     fit();
     window.addEventListener('resize', fit);
+    dock.classList.add('show');       // 整块键盘模式常显
   }
 
   function pushHistory(id) {
@@ -392,31 +477,26 @@
   }
 
   // ---------- 事件分发 ----------
-  const stuck = new Map();
+  const stuck = new Map();          // 仅 full 模式：兜底松开
   function press(id) {
     pushHistory(id);
-    if (MODE === 'recent') onDown(id);
-    else { const cap = capById.get(id); if (cap) cap.classList.add('on'); }
+    if (MODE === 'recent') { onDown(id); return; }
+    const cap = capById.get(id);
+    if (cap) cap.classList.add('on');
     clearTimeout(stuck.get(id));
     stuck.set(id, setTimeout(() => release(id), STUCK_MS));
-    render();
   }
   function release(id) {
-    if (MODE === 'recent') onUp(id);
-    else { const cap = capById.get(id); if (cap) cap.classList.remove('on'); }
+    if (MODE === 'recent') { onUp(id); return; }
+    const cap = capById.get(id);
+    if (cap) cap.classList.remove('on');
     clearTimeout(stuck.get(id));
     stuck.delete(id);
-    render();
   }
   function clearAll() {
+    if (MODE === 'recent') { clearRecent(); return; }
     for (const id of [...stuck.keys()]) release(id);
-    heldMods = [];
-    if (MODE === 'full') for (const cap of capById.values()) cap.classList.remove('on');
-  }
-  let raf = 0;
-  function render() {
-    if (raf) return;
-    raf = requestAnimationFrame(() => { raf = 0; if (MODE === 'recent') renderStrip(); });
+    for (const cap of capById.values()) cap.classList.remove('on');
   }
 
   function connect() {
