@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obs-keyflow"
+version = "1.0.0"
+description = "Local keystroke overlay for OBS Studio — shows the keys you press in real time (Windows)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "CGArtLab" }]
+keywords = ["obs", "overlay", "keystroke", "keyboard", "streaming", "screencast"]
+classifiers = [
+    "Environment :: Win32 (MS Windows)",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+
+[project.urls]
+Homepage = "https://github.com/cgartlab/obs-keyflow"
+
+[project.scripts]
+keyflow = "keyflow.__main__:main"
+
+[tool.setuptools]
+packages = ["keyflow"]

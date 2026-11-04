@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 本地运行产物（不进入版本库）
+.local/
+*.log
+logs/
+
+# OBS 场景集合备份 / 个人配置
+*.keyflow-backup
+*.json.bak
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

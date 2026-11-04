@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>obs-keyflow</title>
+<!--
+  obs-keyflow 叠加画面（OBS 浏览器源）
+  URL 参数：
+    ?n=5          显示最近几个按键（默认 5）
+    ?size=64      键帽尺寸 px（默认 64）
+    ?bottom=44    距画面底部距离 px（默认 44）
+    ?gap=10       键帽间距 px（默认 10）
+    ?mode=full    切换成整块键盘（默认 recent）
+    ?history=1    full 模式下额外显示按键历史串
+    ?debug=1      左上角显示连接状态点（排查用，默认关闭）
+-->
+<style>
+  :root {
+    --n-size: 64px;
+    --gap: 10px;
+    --bottom: 44px;
+    --pad: 12px;
+    --radius: 14px;
+    --g2: 7px;
+
+    --glass: rgba(9, 11, 16, 0.86);
+    --edge: rgba(255, 255, 255, 0.10);
+    --key: rgba(255, 255, 255, 0.065);
+    --key-edge: rgba(255, 255, 255, 0.16);
+    --legend: rgba(255, 255, 255, 0.86);
+    --legend-dim: rgba(255, 255, 255, 0.44);
+    --hot: #ffffff;
+    --hot-ink: #0a0d13;
+    --glow: rgba(122, 168, 255, 0.55);
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #dock {
+    position: fixed;
+    left: 50%;
+    bottom: var(--bottom);
+    transform: translateX(-50%);
+    padding: var(--pad);
+    box-sizing: border-box;
+    border-radius: calc(var(--radius) + 8px);
+    background: var(--glass);
+    border: 1px solid var(--edge);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    display: none;              /* 未按键时不占画面 */
+  }
+  #dock.show { display: block; }
+
+  /* ---------- 模式一：最近按键 ---------- */
+  #strip {
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    height: var(--n-size);
+  }
+  .rcap {
+    box-sizing: border-box;
+    height: var(--n-size);
+    min-width: var(--n-size);
+    padding: 0 calc(var(--n-size) * 0.26);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+    background: var(--key);
+    border: 1px solid var(--key-edge);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
+    color: var(--legend);
+    font-size: calc(var(--n-size) * 0.40);
+    font-weight: 560;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    transition: background .09s ease, color .09s ease, box-shadow .09s ease,
+                border-color .09s ease, opacity .28s ease, transform .09s ease;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .rcap.w2 { font-size: calc(var(--n-size) * 0.29); padding: 0 calc(var(--n-size) * 0.21); }
+  .rcap.w3 { font-size: calc(var(--n-size) * 0.235); padding: 0 calc(var(--n-size) * 0.17); letter-spacing: 0.01em; }
+  .rcap .plus { opacity: 0.42; margin: 0 0.07em; font-weight: 400; }
+  .rcap.on {
+    background: var(--hot);
+    border-color: #fff;
+    color: var(--hot-ink);
+    transform: translateY(1px);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 22px var(--glow), 0 0 44px rgba(122, 168, 255, 0.28);
+  }
+  .rcap.pop { animation: pop .16s ease-out; }
+  @keyframes pop { from { transform: scale(0.9); } to { transform: scale(1); } }
+
+  /* ---------- 模式二：整块键盘 ---------- */
+  #keyboard { display: none; }
+  #keyboard .row { display: flex; align-items: stretch; height: var(--kh); margin-bottom: var(--g2); }
+  #keyboard .row:last-child { margin-bottom: 0; }
+  #keyboard .row.fn { height: calc(var(--kh) * 0.72); }
+  #keyboard .k { box-sizing: border-box; padding-right: var(--g2); display: flex; }
+  #keyboard .k:last-child { padding-right: 0; }
+  #keyboard .cap {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--key);
+    border: 1px solid var(--key-edge);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
+    color: var(--legend);
+    font-size: calc(var(--kh) * 0.34);
+    font-weight: 560;
+    text-transform: uppercase;
+    transition: background .07s ease, color .07s ease, box-shadow .07s ease,
+                border-color .07s ease, transform .07s ease;
+    user-select: none;
+  }
+  #keyboard .cap.wide-label { font-size: calc(var(--kh) * 0.26); letter-spacing: 0.06em; }
+  #keyboard .cap .sub {
+    position: absolute;
+    top: 4px; right: 6px;
+    font-size: calc(var(--kh) * 0.22);
+    color: var(--legend-dim);
+    font-weight: 500;
+    text-transform: none;
+  }
+  #keyboard .cap.on {
+    background: var(--hot);
+    border-color: #fff;
+    color: var(--hot-ink);
+    transform: translateY(1px);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 22px var(--glow), 0 0 44px rgba(122, 168, 255, 0.28);
+  }
+  #keyboard .cap.on .sub { color: rgba(10, 13, 19, 0.55); }
+  #history {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    font: 500 12px/1 "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    color: var(--legend-dim);
+    white-space: nowrap;
+  }
+
+  /* ---------- 调试指示 ---------- */
+  #dot {
+    position: fixed;
+    left: 10px; top: 10px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #e5484d;
+    box-shadow: 0 0 8px rgba(229, 72, 77, 0.7);
+    display: none;
+  }
+  #dot.on { background: #30d158; box-shadow: 0 0 8px rgba(48, 209, 88, 0.7); }
+  body.debug #dot { display: block; }
+</style>
+</head>
+<body>
+  <div id="dot"></div>
+  <div id="dock">
+    <div id="strip"></div>
+    <div id="keyboard"><div id="history"></div><div id="keys"></div></div>
+  </div>
+
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  const root = document.documentElement;
+  if (qs.has('bottom')) root.style.setProperty('--bottom', qs.get('bottom') + 'px');
+  if (qs.has('size')) root.style.setProperty('--n-size', qs.get('size') + 'px');
+  if (qs.has('gap')) root.style.setProperty('--gap', qs.get('gap') + 'px');
+
+  const MODE = qs.get('mode') === 'full' ? 'full' : 'recent';
+  const SHOW_N = Math.max(1, parseInt(qs.get('n') || '5', 10) || 5);
+  const SHOW_HISTORY = qs.get('history') === '1';
+  const DEBUG = qs.get('debug') === '1';
+  const STUCK_MS = 8000;
+
+  if (DEBUG) document.body.classList.add('debug');
+  const dot = document.getElementById('dot');
+  const dock = document.getElementById('dock');
+  const stripEl = document.getElementById('strip');
+  const kbEl = document.getElementById('keyboard');
+  if (MODE === 'full') { stripEl.style.display = 'none'; kbEl.style.display = 'block'; }
+
+  // 键位 id → 显示标签（id 由服务端 keymap.py 输出，属于稳定契约）
+  const NICE = {
+    backspace: 'Backspace', enter: 'Enter', tab: 'Tab', space: 'Space', esc: 'Esc',
+    capslock: 'Caps', shiftleft: 'Shift', shiftright: 'Shift',
+    controlleft: 'Ctrl', controlright: 'Ctrl', altleft: 'Alt', altright: 'Alt',
+    metaleft: 'Win', metaright: 'Win', contextmenu: 'Menu',
+    arrowleft: '←', arrowup: '↑', arrowright: '→', arrowdown: '↓',
+    insert: 'Ins', delete: 'Del', home: 'Home', end: 'End',
+    pageup: 'PgUp', pagedown: 'PgDn', printscreen: 'PrtSc', scrolllock: 'ScrLk', numlock: 'Num',
+    pause: 'Pause',
+    minus: '-', equal: '=', backquote: '`', bracketleft: '[', bracketright: ']',
+    backslash: '\\', semicolon: ';', quote: "'", comma: ',', period: '.', slash: '/',
+    numpadadd: 'Num+', numpadsubtract: 'Num-', numpadmultiply: 'Num*', numpaddivide: 'Num/',
+    numpaddecimal: 'Num.',
+    volumeup: 'Vol+', volumedown: 'Vol-', audiomute: 'Mute',
+    medianext: 'Next', mediaprev: 'Prev', mediastop: 'Stop', mediaplay: 'Play',
+  };
+  const pretty = (id) => NICE[id]
+    || id.replace(/^f(\d+)$/i, 'F$1')
+        .replace(/^numpad(\d)$/, 'Num$1')
+        .toUpperCase();
+
+  // ---------- 模式一：最近按键（组合键用 + 连接） ----------
+  const entries = [];   // { parts: string[], held: bool, closed: bool }
+  const MOD_RANK = {
+    controlleft: 0, controlright: 0,
+    metaleft: 1, metaright: 1,
+    altleft: 2, altright: 2,
+    shiftleft: 3, shiftright: 3,
+  };
+  const isMod = (id) => Object.prototype.hasOwnProperty.call(MOD_RANK, id);
+  let heldMods = [];
+
+  function modsText() {
+    const seen = new Set();
+    const out = [];
+    for (const id of [...heldMods].sort((a, b) => MOD_RANK[a] - MOD_RANK[b])) {
+      const name = pretty(id);
+      if (!seen.has(name)) { seen.add(name); out.push(name); }
+    }
+    return out;
+  }
+
+  function sizeClass(parts) {
+    const len = parts.join('+').length;
+    if (len <= 3) return '';
+    if (len <= 6) return ' w2';
+    return ' w3';
+  }
+
+  function renderStrip() {
+    stripEl.innerHTML = '';
+    entries.forEach((e, i) => {
+      const cap = document.createElement('div');
+      cap.className = 'rcap' + sizeClass(e.parts) + (e.held ? ' on' : '');
+      const fromEnd = entries.length - 1 - i;
+      cap.style.opacity = String(Math.max(0.42, 1 - fromEnd * 0.145));
+      e.parts.forEach((p, idx) => {
+        if (idx > 0) {
+          const plus = document.createElement('span');
+          plus.className = 'plus';
+          plus.textContent = '+';
+          cap.appendChild(plus);
+        }
+        cap.appendChild(document.createTextNode(p));
+      });
+      if (fromEnd === 0) cap.classList.add('pop');
+      stripEl.appendChild(cap);
+    });
+    dock.classList.toggle('show', entries.length > 0);
+  }
+
+  const lastEntry = () => entries[entries.length - 1];
+
+  function onDown(id) {
+    if (isMod(id)) {
+      if (!heldMods.includes(id)) heldMods.push(id);
+      const parts = modsText();
+      const last = lastEntry();
+      if (last && !last.closed) { last.parts = parts; last.held = true; }
+      else { entries.push({ parts, held: true, closed: false }); }
+    } else {
+      const parts = modsText().concat([pretty(id)]);
+      const last = lastEntry();
+      if (last && !last.closed) { last.parts = parts; last.held = true; last.closed = true; }
+      else { entries.push({ parts, held: true, closed: true }); }
+    }
+    while (entries.length > SHOW_N) entries.shift();
+  }
+
+  function onUp(id) {
+    const mi = heldMods.indexOf(id);
+    if (mi >= 0) heldMods.splice(mi, 1);
+    const last = lastEntry();
+    if (!last) return;
+    if (!last.closed) {
+      const parts = modsText();
+      if (parts.length) { last.parts = parts; last.held = true; }
+      else { last.held = false; }
+    } else {
+      last.held = false;
+    }
+  }
+
+  // ---------- 模式二：整块键盘 ----------
+  const ROWS = [
+    { cls: 'fn', keys: [
+      ['esc', 1, 'Esc'], [null, 1],
+      ['f1', 1, 'F1'], ['f2', 1, 'F2'], ['f3', 1, 'F3'], ['f4', 1, 'F4'], [null, 0.5],
+      ['f5', 1, 'F5'], ['f6', 1, 'F6'], ['f7', 1, 'F7'], ['f8', 1, 'F8'], [null, 0.5],
+      ['f9', 1, 'F9'], ['f10', 1, 'F10'], ['f11', 1, 'F11'], ['f12', 1, 'F12'],
+    ]},
+    { keys: [
+      ['backquote', 1, '`', '~'], ['1', 1, '1', '!'], ['2', 1, '2', '@'], ['3', 1, '3', '#'],
+      ['4', 1, '4', '$'], ['5', 1, '5', '%'], ['6', 1, '6', '^'], ['7', 1, '7', '&'],
+      ['8', 1, '8', '*'], ['9', 1, '9', '('], ['0', 1, '0', ')'], ['minus', 1, '-', '_'],
+      ['equal', 1, '=', '+'], ['backspace', 2, 'Backspace', null, true],
+    ]},
+    { keys: [
+      ['tab', 1.5, 'Tab', null, true],
+      ['q', 1, 'Q'], ['w', 1, 'W'], ['e', 1, 'E'], ['r', 1, 'R'], ['t', 1, 'T'],
+      ['y', 1, 'Y'], ['u', 1, 'U'], ['i', 1, 'I'], ['o', 1, 'O'], ['p', 1, 'P'],
+      ['bracketleft', 1, '[', '{'], ['bracketright', 1, ']', '}'], ['backslash', 1.5, '\\', '|'],
+    ]},
+    { keys: [
+      ['capslock', 1.75, 'Caps', null, true],
+      ['a', 1, 'A'], ['s', 1, 'S'], ['d', 1, 'D'], ['f', 1, 'F'], ['g', 1, 'G'],
+      ['h', 1, 'H'], ['j', 1, 'J'], ['k', 1, 'K'], ['l', 1, 'L'],
+      ['semicolon', 1, ';', ':'], ['quote', 1, "'", '"'], ['enter', 2.25, 'Enter', null, true],
+    ]},
+    { keys: [
+      ['shiftleft', 2.25, 'Shift', null, true],
+      ['z', 1, 'Z'], ['x', 1, 'X'], ['c', 1, 'C'], ['v', 1, 'V'], ['b', 1, 'B'],
+      ['n', 1, 'N'], ['m', 1, 'M'],
+      ['comma', 1, ',', '<'], ['period', 1, '.', '>'], ['slash', 1, '/', '?'],
+      ['shiftright', 2.75, 'Shift', null, true],
+    ]},
+    { keys: [
+      ['controlleft', 1.25, 'Ctrl', null, true], ['metaleft', 1.25, 'Win', null, true],
+      ['altleft', 1.25, 'Alt', null, true], ['space', 6.25, '', null, true],
+      ['altright', 1.25, 'Alt', null, true], ['metaright', 1.25, 'Win', null, true],
+      ['contextmenu', 1.25, 'Menu', null, true], ['controlright', 1.25, 'Ctrl', null, true],
+    ]},
+  ];
+
+  const capById = new Map();
+  const history = [];
+  const histEl = document.getElementById('history');
+
+  if (MODE === 'full') {
+    const keysEl = document.getElementById('keys');
+    for (const row of ROWS) {
+      const r = document.createElement('div');
+      r.className = 'row' + (row.cls ? ' ' + row.cls : '');
+      for (const k of row.keys) {
+        const [id, units, label, sub, wide] = k;
+        const holder = document.createElement('div');
+        holder.className = 'k';
+        holder.style.flex = units + ' 0 0';
+        if (id) {
+          const cap = document.createElement('div');
+          cap.className = 'cap' + (wide ? ' wide-label' : '');
+          cap.textContent = label;
+          if (sub) {
+            const s = document.createElement('span');
+            s.className = 'sub';
+            s.textContent = sub;
+            cap.appendChild(s);
+          }
+          capById.set(id, cap);
+          holder.appendChild(cap);
+        }
+        r.appendChild(holder);
+      }
+      keysEl.appendChild(r);
+    }
+    if (!SHOW_HISTORY) { histEl.style.display = 'none'; histEl.style.marginBottom = '0'; }
+    const fit = () => root.style.setProperty('--u', (keysEl.clientWidth / 15) + 'px');
+    fit();
+    window.addEventListener('resize', fit);
+  }
+
+  function pushHistory(id) {
+    if (MODE !== 'full' || !SHOW_HISTORY) return;
+    history.push(id);
+    while (history.length > 16) history.shift();
+    histEl.innerHTML = '';
+    for (const h of history) {
+      const s = document.createElement('span');
+      s.textContent = pretty(h);
+      histEl.appendChild(s);
+    }
+  }
+
+  // ---------- 事件分发 ----------
+  const stuck = new Map();
+  function press(id) {
+    pushHistory(id);
+    if (MODE === 'recent') onDown(id);
+    else { const cap = capById.get(id); if (cap) cap.classList.add('on'); }
+    clearTimeout(stuck.get(id));
+    stuck.set(id, setTimeout(() => release(id), STUCK_MS));
+    render();
+  }
+  function release(id) {
+    if (MODE === 'recent') onUp(id);
+    else { const cap = capById.get(id); if (cap) cap.classList.remove('on'); }
+    clearTimeout(stuck.get(id));
+    stuck.delete(id);
+    render();
+  }
+  function clearAll() {
+    for (const id of [...stuck.keys()]) release(id);
+    heldMods = [];
+    if (MODE === 'full') for (const cap of capById.values()) cap.classList.remove('on');
+  }
+  let raf = 0;
+  function render() {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; if (MODE === 'recent') renderStrip(); });
+  }
+
+  function connect() {
+    const es = new EventSource('/events');
+    es.onopen = () => { if (DEBUG) dot.classList.add('on'); };
+    es.onerror = () => {
+      if (DEBUG) dot.classList.remove('on');
+      // EventSource 自动重连；重连期间清空按住状态，避免残留
+      clearAll();
+      render();
+    };
+    es.onmessage = (ev) => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.t === 'snap') {
+        clearAll();
+        for (const id of m.pressed) press(id);
+      } else if (m.t === 'key') {
+        m.d ? press(m.k) : release(m.k);
+      }
+    };
+  }
+  connect();
+
+  window.addEventListener('blur', clearAll);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) clearAll(); });
+})();
+</script>
+</body>
+</html>
