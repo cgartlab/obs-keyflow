@@ -4,7 +4,7 @@
 
 ![OBS 内实拍](assets/preview.png)
 
-*上图为 OBS 场景实拍：底部一条玻璃胶囊显示最近按键，组合键合并为 `CTRL+C` 形式，按住中的键变白。*
+*示意图：底部一条玻璃胶囊显示最近按键，组合键合并为 `CTRL+C` 形式；默认是未锁定的紧凑部件源，可直接用鼠标拖动。*
 
 **English** — A local keystroke overlay for OBS Studio on Windows. A low-level keyboard hook
 streams key events over Server-Sent Events; OBS renders them with a built-in Browser source.
