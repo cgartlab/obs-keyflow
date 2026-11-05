@@ -190,6 +190,7 @@
   const SHOW_N = Math.max(1, parseInt(qs.get('n') || '5', 10) || 5);
   const SHOW_HISTORY = qs.get('history') === '1';
   const DEBUG = qs.get('debug') === '1';
+  const DEMO = qs.get('demo') === '1';   // 静态样张：不连服务，固定显示几枚示例键帽
   const STUCK_MS = 8000;
 
   // ---------- 吸附位置：?anchor= 九宫格，?margin= 距边缘像素 ----------
@@ -222,6 +223,11 @@
   const ANCHOR = parseAnchor(qs.get('anchor'));
   const rawMargin = qs.has('margin') ? qs.get('margin') : qs.get('bottom');
   const MARGIN = Math.max(0, parseInt(rawMargin ?? '44', 10) || 0);
+  // ?fit=1 / ?widget=1：把浏览器源当成一个紧凑"部件"，内容在源框内居中并按需缩放
+  // —— 这时在 OBS 预览里直接拖拽该源即可移动按键，source 尺寸就是可拖的边框
+  const fitRequested = qs.get('fit') === '1' || qs.get('widget') === '1';
+  const FIT = fitRequested && MODE === 'recent';
+  if (fitRequested && !FIT) console.warn('[obs-keyflow] ?fit=1 只适用于 recent 模式，已在 full 模式下忽略');
 
   if (DEBUG) document.body.classList.add('debug');
   const dot = document.getElementById('dot');
@@ -246,8 +252,41 @@
     const ty = v === 'middle' ? 'translateY(-50%)' : '';
     dock.style.transform = `${tx} ${ty}`.trim() || 'none';
   }
-  applyAnchor();
-  window.addEventListener('resize', applyAnchor);
+
+  // 部件模式：居中在本源框内；内容比框宽/高时等比缩小，永不裁切
+  let fitPending = 0;
+  function applyFitScale() {
+    if (!FIT) return;
+    // 部件模式下源框本身就是可视区域，只留很小的内边距（margin 供画布贴边用）
+    const inset = Math.min(MARGIN, 8);
+    const boxW = Math.max(1, innerWidth - inset * 2);
+    const boxH = Math.max(1, innerHeight - inset * 2);
+    const w = Math.max(1, dock.offsetWidth);
+    const h = Math.max(1, dock.offsetHeight);
+    const k = Math.min(1, boxW / w, boxH / h);
+    dock.style.transform = `translate(-50%, -50%) scale(${Number(k.toFixed(4))})`;
+  }
+  function scheduleFit() {
+    if (!FIT || fitPending) return;
+    fitPending = requestAnimationFrame(() => {
+      fitPending = 0;
+      applyFitScale();
+      setTimeout(applyFitScale, 120);   // 兜底：字体/换行落定后再量一次，避免一帧的溢出
+    });
+  }
+  function layoutDock() {
+    if (FIT) {
+      dock.style.left = '50%';
+      dock.style.right = 'auto';
+      dock.style.top = '50%';
+      dock.style.bottom = 'auto';
+      applyFitScale();
+      return;
+    }
+    applyAnchor();
+  }
+  layoutDock();
+  window.addEventListener('resize', layoutDock);
 
   if (MODE === 'full') { stripEl.style.display = 'none'; kbEl.style.display = 'block'; }
 
@@ -318,6 +357,7 @@
       node.appendChild(document.createTextNode(p));
     });
     node.className = 'rcap' + sizeClass(e.parts) + (e.held ? ' on' : '');
+    scheduleFit();
   }
 
   function mount(e) {
@@ -325,6 +365,7 @@
     fillCap(e.el, e);
     e.el.classList.add('pop');
     stripEl.appendChild(e.el);
+    scheduleFit();
     setTimeout(() => { if (e.el) e.el.classList.remove('pop'); }, 200);
   }
 
@@ -339,6 +380,7 @@
       if (remain <= 0) {
         if (e.el) e.el.remove();
         entries.splice(i, 1);
+        scheduleFit();
         continue;
       }
       if (e.el) {
@@ -433,6 +475,7 @@
     heldMods = [];
     stopTicker();
     dock.classList.remove('show');
+    scheduleFit();
   }
 
   // ---------- 模式二：整块键盘 ----------
@@ -549,6 +592,16 @@
     for (const cap of capById.values()) cap.classList.remove('on');
   }
 
+  // ---------- 静态样张（?demo=1）：方便摆位置、看效果，不依赖按键 ----------
+  function renderDemo() {
+    const samples = ['controlleft', 'shiftleft', 'a', 'space', 'backspace'];
+    for (const id of samples.slice(0, SHOW_N)) press(id);
+    const far = performance.now() + 3600000;
+    for (const e of entries) { e.held = false; e.expires = far; }
+    paint();
+    stopTicker();          // 样张静态展示，不再跑计时器
+  }
+
   function connect() {
     const es = new EventSource('/events');
     es.onopen = () => { if (DEBUG) dot.classList.add('on'); };
@@ -569,7 +622,7 @@
       }
     };
   }
-  connect();
+  if (DEMO) { renderDemo(); } else { connect(); }
 
   window.addEventListener('blur', clearAll);
   document.addEventListener('visibilitychange', () => { if (document.hidden) clearAll(); });

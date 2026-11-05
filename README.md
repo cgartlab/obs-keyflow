@@ -15,7 +15,8 @@ No OBS plugin, no version ABI coupling, no telemetry, no third-party packages.
 ## 特性
 
 - **只显示最近按下的键**：底部紧凑一条，最新的最亮、旧的略暗
-- **可吸附画面九宫格任意位置**：`?anchor=` 选角落/边缘/正中，`?margin=` 设距边缘像素，键帽一多也不会跑偏，自动贴边
+- **鼠标直接拖拽定位**：默认生成紧凑部件源（未锁定），在 OBS 预览里按住就能拖到任意位置；键帽变多时自动缩放不溢出
+- **也可参数化贴边**：`?anchor=` 九宫格 + `?margin=` 边距，适合固定版式；`?demo=1` 提供静态样张方便调位置
 - **3 秒后自动淡出消失**：每枚键帽保持全亮 3 秒，最后约 0.45 秒淡出；全部消失时整条胶囊一起隐去，不按键时完全不占画面（时长与淡出长度可调，见参数表）
 - **组合键合并**：`Ctrl+C` / `Ctrl+Shift+A`，`+` 号弱化显示；按住修饰键时同一枚键帽就地变成组合，不会多出一枚
 - **按住高亮**：物理按住不放的键保持白色高亮，且按住期间不计入 3 秒倒计时
@@ -48,10 +49,38 @@ python scripts/add-obs-source.py
 .\scripts\install-autostart.ps1      # 移除：.\scripts\install-autostart.ps1 -Remove
 ```
 
-### 手动在 OBS 里加源
+### 手动在 OBS 里加源（拖拽式，推荐）
 
-来源 → `+` → **浏览器** → 勾选**本地文件**关闭 → URL 填 `http://127.0.0.1:16900/`，
-宽 `1920`、高 `1080`（与画布一致），勾选「关闭源时关闭页面」。
+来源 → `+` → **浏览器** → 关掉「本地文件」→ URL 填 `http://127.0.0.1:16900/?fit=1`，
+宽 `880`、高 `160`（这是可拖动的框，内容会在框内自动居中/缩放），勾选「关闭源时关闭页面」。
+
+加好后**不锁定**该源，就能在 OBS 预览里用鼠标直接拖它移动按键；想放哪儿就拖到哪儿。
+
+## 两种定位方式
+
+### 方式一：鼠标直接拖（直观，默认）
+
+`add-obs-source.py` 默认就生成这种「紧凑部件源」：
+
+- 源尺寸 = 可拖动的边框（默认 880×160），内容在框内居中，键帽变多时自动缩放，不会溢出
+- 场景项 `locked: false`，在 OBS 预览里按住拖动即可移动，松手位置会随场景一起保存
+- 需要精确位置时：在源属性的「变换」里看 `位置 X/Y`，或改用方式二
+
+```powershell
+python scripts/add-obs-source.py                    # 默认：底部居中、880×160 可拖部件
+python scripts/add-obs-source.py --pos "1240,760"   # 指定初始位置
+python scripts/add-obs-source.py --width 1000 --height 180
+```
+
+### 方式二：URL 参数精确贴边
+
+`--full-canvas` 生成铺满画布的源，配合源内 `?anchor=` / `?margin=` 精确落位（适合固定版式、不想手动拖）：
+
+```powershell
+python scripts/add-obs-source.py --full-canvas --anchor br --margin 60
+```
+
+两种方式都改完记得在源属性里点「刷新页面」。
 
 ## 可调参数
 
@@ -59,13 +88,15 @@ python scripts/add-obs-source.py
 
 | 参数 | 作用 | 默认 |
 | --- | --- | --- |
+| `?fit=1` | **部件模式**：内容在浏览器源框内居中并按需缩放，配合未锁定源可鼠标拖拽定位 | 关闭（=铺满画布） |
 | `?n=5` | 显示最近几个按键（组合键算 1 个） | 5 |
 | `?ttl=3000` | 键帽出现后多久消失（毫秒） | 3000（3 秒） |
 | `?fade=450` | 消失前最后多久开始淡出（毫秒） | 450 |
-| `?anchor=bc` | 吸附位置，九宫格：`tl` `tc` `tr` / `ml` `c` `mr` / `bl` `bc` `br`，也接受 `top-left`、`right`、`bottom`、`center` 等写法 | `bc`（底部居中） |
+| `?anchor=bc` | 吸附位置，九宫格：`tl` `tc` `tr` / `ml` `c` `mr` / `bl` `bc` `br`，也接受 `top-left`、`right`、`bottom`、`center` 等写法（`fit` 模式下不生效） | `bc`（底部居中） |
 | `?margin=44` | 距吸附边缘的像素距离（`?bottom=` 保留为兼容写法，等价） | 44 |
 | `?size=64` | 键帽尺寸 px | 64 |
 | `?gap=10` | 键帽间距 px | 10 |
+| `?demo=1` | 静态样张：不按键也常驻几枚示例键帽，用来调位置/看效果 | 关闭 |
 | `?mode=full` | 切换成整块键盘样式 | recent |
 | `?history=1` | 仅 `mode=full`：额外显示按键历史串 | 关闭 |
 | `?debug=1` | 左上角显示连接状态点（绿=已连，红=断开） | 关闭 |
@@ -76,6 +107,7 @@ python scripts/add-obs-source.py
 - 左上角、离边 24px：`?anchor=tl&margin=24`
 - 正中：`?anchor=c`
 - 停留更久：`?ttl=5000&fade=800`
+- 调位置时加样张：`?fit=1&demo=1`
 - 组合：`?anchor=tr&margin=48&n=6&size=72`
 
 ### 吸附位置速查
