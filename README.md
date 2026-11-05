@@ -15,6 +15,7 @@ No OBS plugin, no version ABI coupling, no telemetry, no third-party packages.
 ## 特性
 
 - **只显示最近按下的键**：底部紧凑一条，最新的最亮、旧的略暗
+- **可吸附画面九宫格任意位置**：`?anchor=` 选角落/边缘/正中，`?margin=` 设距边缘像素，键帽一多也不会跑偏，自动贴边
 - **3 秒后自动淡出消失**：每枚键帽保持全亮 3 秒，最后约 0.45 秒淡出；全部消失时整条胶囊一起隐去，不按键时完全不占画面（时长与淡出长度可调，见参数表）
 - **组合键合并**：`Ctrl+C` / `Ctrl+Shift+A`，`+` 号弱化显示；按住修饰键时同一枚键帽就地变成组合，不会多出一枚
 - **按住高亮**：物理按住不放的键保持白色高亮，且按住期间不计入 3 秒倒计时
@@ -61,14 +62,37 @@ python scripts/add-obs-source.py
 | `?n=5` | 显示最近几个按键（组合键算 1 个） | 5 |
 | `?ttl=3000` | 键帽出现后多久消失（毫秒） | 3000（3 秒） |
 | `?fade=450` | 消失前最后多久开始淡出（毫秒） | 450 |
+| `?anchor=bc` | 吸附位置，九宫格：`tl` `tc` `tr` / `ml` `c` `mr` / `bl` `bc` `br`，也接受 `top-left`、`right`、`bottom`、`center` 等写法 | `bc`（底部居中） |
+| `?margin=44` | 距吸附边缘的像素距离（`?bottom=` 保留为兼容写法，等价） | 44 |
 | `?size=64` | 键帽尺寸 px | 64 |
 | `?gap=10` | 键帽间距 px | 10 |
-| `?bottom=44` | 距画面底部距离 px | 44 |
 | `?mode=full` | 切换成整块键盘样式 | recent |
 | `?history=1` | 仅 `mode=full`：额外显示按键历史串 | 关闭 |
 | `?debug=1` | 左上角显示连接状态点（绿=已连，红=断开） | 关闭 |
 
-例：`http://127.0.0.1:16900/?n=6&size=72&bottom=56`、想停留更久 `?ttl=5000&fade=800`
+例：
+
+- 右下角、离边 60px：`http://127.0.0.1:16900/?anchor=br&margin=60`
+- 左上角、离边 24px：`?anchor=tl&margin=24`
+- 正中：`?anchor=c`
+- 停留更久：`?ttl=5000&fade=800`
+- 组合：`?anchor=tr&margin=48&n=6&size=72`
+
+### 吸附位置速查
+
+| 角落/边缘 | 写法 | 说明 |
+| --- | --- | --- |
+| 左上 | `tl` / `top-left` | 距上、左各 `margin` 像素 |
+| 上中 | `tc` / `top` | 水平居中，距上 `margin` |
+| 右上 | `tr` / `top-right` | 距上、右各 `margin` |
+| 左中 | `ml` / `left` | 距左 `margin`，垂直居中 |
+| 正中 | `c` / `center` | 画面正中 |
+| 右中 | `mr` / `right` | 距右 `margin`，垂直居中 |
+| 左下 | `bl` / `bottom-left` | 距下、左各 `margin` |
+| 下中 | `bc` / `bottom`（默认） | 水平居中，距下 `margin` |
+| 右下 | `br` / `bottom-right` | 距下、右各 `margin` |
+
+写错锚点会在控制台给出警告并回退到 `bc`，不会跑到画面外。
 
 ## 命令行
 

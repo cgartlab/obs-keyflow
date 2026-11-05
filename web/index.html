@@ -8,9 +8,11 @@
   URL 参数：
     ?n=5          显示最近几个按键（默认 5）
     ?ttl=3000     每个键帽出现后多久消失 ms（默认 3000 = 3 秒）
-    ?fade=600     消失前最后多久开始淡出 ms（默认 600）
+    ?fade=450     消失前最后多久开始淡出 ms（默认 450）
+    ?anchor=bc    吸附位置：tl/tc/tr/ml/c/mr/bl/bc/br，也接受 top-left、right、bottom 等写法
+                  （默认 bc = 底部居中；c = 正中）
+    ?margin=44    距吸附边缘的像素距离（?bottom= 为兼容旧写法，等价于 margin）
     ?size=64      键帽尺寸 px（默认 64）
-    ?bottom=44    距画面底部距离 px（默认 44）
     ?gap=10       键帽间距 px（默认 10）
     ?mode=full    切换成整块键盘（默认 recent）
     ?history=1    full 模式下额外显示按键历史串
@@ -20,7 +22,6 @@
   :root {
     --n-size: 64px;
     --gap: 10px;
-    --bottom: 44px;
     --pad: 12px;
     --radius: 14px;
     --g2: 7px;
@@ -47,9 +48,7 @@
 
   #dock {
     position: fixed;
-    left: 50%;
-    bottom: var(--bottom);
-    transform: translateX(-50%);
+    /* 定位由 JS 按 ?anchor= / ?margin= 计算后写入，见 applyAnchor() */
     padding: var(--pad);
     box-sizing: border-box;
     border-radius: calc(var(--radius) + 8px);
@@ -184,7 +183,6 @@
 (() => {
   const qs = new URLSearchParams(location.search);
   const root = document.documentElement;
-  if (qs.has('bottom')) root.style.setProperty('--bottom', qs.get('bottom') + 'px');
   if (qs.has('size')) root.style.setProperty('--n-size', qs.get('size') + 'px');
   if (qs.has('gap')) root.style.setProperty('--gap', qs.get('gap') + 'px');
 
@@ -194,11 +192,63 @@
   const DEBUG = qs.get('debug') === '1';
   const STUCK_MS = 8000;
 
+  // ---------- 吸附位置：?anchor= 九宫格，?margin= 距边缘像素 ----------
+  const ANCHOR_GRID = {
+    tl: ['left', 'top'],    tc: ['center', 'top'],    tr: ['right', 'top'],
+    ml: ['left', 'middle'], c:  ['center', 'middle'], mr: ['right', 'middle'],
+    bl: ['left', 'bottom'], bc: ['center', 'bottom'], br: ['right', 'bottom'],
+  };
+  const ANCHOR_ALIAS = {
+    'top-left': 'tl', topleft: 'tl', 'left-top': 'tl',
+    'top-center': 'tc', topcenter: 'tc', top: 'tc', 'top-middle': 'tc', topmiddle: 'tc', 'center-top': 'tc',
+    'top-right': 'tr', topright: 'tr', 'right-top': 'tr',
+    left: 'ml', 'middle-left': 'ml', middleleft: 'ml', 'left-center': 'ml', 'center-left': 'ml', 'left-middle': 'ml',
+    center: 'c', centre: 'c', middle: 'c',
+    right: 'mr', 'middle-right': 'mr', middleright: 'mr', 'right-center': 'mr', 'center-right': 'mr', 'right-middle': 'mr',
+    'bottom-left': 'bl', bottomleft: 'bl', 'left-bottom': 'bl',
+    'bottom-center': 'bc', bottomcenter: 'bc', bottom: 'bc', 'bottom-middle': 'bc', 'center-bottom': 'bc',
+    'bottom-right': 'br', bottomright: 'br', 'right-bottom': 'br',
+  };
+
+  function parseAnchor(raw) {
+    const key = String(raw ?? '').trim().toLowerCase().replace(/[_\s]+/g, '-');
+    if (!key) return 'bc';
+    if (ANCHOR_GRID[key]) return key;
+    if (ANCHOR_ALIAS[key]) return ANCHOR_ALIAS[key];
+    console.warn('[obs-keyflow] 无法识别的 anchor:', raw, '→ 回退 bottom-center');
+    return 'bc';
+  }
+
+  const ANCHOR = parseAnchor(qs.get('anchor'));
+  const rawMargin = qs.has('margin') ? qs.get('margin') : qs.get('bottom');
+  const MARGIN = Math.max(0, parseInt(rawMargin ?? '44', 10) || 0);
+
   if (DEBUG) document.body.classList.add('debug');
   const dot = document.getElementById('dot');
   const dock = document.getElementById('dock');
   const stripEl = document.getElementById('strip');
   const kbEl = document.getElementById('keyboard');
+
+  // 按 ?anchor= / ?margin= 贴边；两轴统一 margin，居中轴用 translate 抵消自身宽度
+  function applyAnchor() {
+    const [h, v] = ANCHOR_GRID[ANCHOR];
+    dock.style.left = 'auto';
+    dock.style.right = 'auto';
+    dock.style.top = 'auto';
+    dock.style.bottom = 'auto';
+    if (h === 'left') dock.style.left = MARGIN + 'px';
+    else if (h === 'right') dock.style.right = MARGIN + 'px';
+    else dock.style.left = '50%';
+    if (v === 'top') dock.style.top = MARGIN + 'px';
+    else if (v === 'bottom') dock.style.bottom = MARGIN + 'px';
+    else dock.style.top = '50%';
+    const tx = h === 'center' ? 'translateX(-50%)' : '';
+    const ty = v === 'middle' ? 'translateY(-50%)' : '';
+    dock.style.transform = `${tx} ${ty}`.trim() || 'none';
+  }
+  applyAnchor();
+  window.addEventListener('resize', applyAnchor);
+
   if (MODE === 'full') { stripEl.style.display = 'none'; kbEl.style.display = 'block'; }
 
   // 键位 id → 显示标签（id 由服务端 keymap.py 输出，属于稳定契约）
