@@ -594,10 +594,14 @@
 
   // ---------- 静态样张（?demo=1）：方便摆位置、看效果，不依赖按键 ----------
   function renderDemo() {
-    const samples = ['controlleft', 'shiftleft', 'a', 'space', 'backspace'];
-    for (const id of samples.slice(0, SHOW_N)) press(id);
+    // 直接构造示例内容，不走按键状态机——否则修饰键会"粘"到后面每一枚键帽上
+    const samples = [['Ctrl', 'C'], ['Shift', 'A'], ['Q'], ['Space'], ['Backspace']];
     const far = performance.now() + 3600000;
-    for (const e of entries) { e.held = false; e.expires = far; }
+    for (const parts of samples.slice(0, SHOW_N)) {
+      const e = { parts, held: false, closed: true, ids: [], expires: far, el: null };
+      entries.push(e);
+      mount(e);
+    }
     paint();
     stopTicker();          // 样张静态展示，不再跑计时器
   }

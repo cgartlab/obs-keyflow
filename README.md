@@ -213,6 +213,9 @@ pip install -e .
 keyflow --console
 ```
 
+脚本编码约定：`scripts/*.ps1` 必须是 **UTF-8 BOM + CRLF**（Windows PowerShell 5.1 对无 BOM 文件按 ANSI 解析，中文注释会把语法打散）；`scripts/*.vbs` 只用 ASCII（Windows Script Host 按 ANSI 读取）。
+`tests/test_scripts.py` 会校验这两条，别绕过。
+
 目录约定：`keyflow/` 只放服务端逻辑，`web/` 只放渲染层，两者通过 `id + SSE` 协议解耦；
 `scripts/` 放一次性运维脚本（注入源、开关自启、关闭 OBS）。
 

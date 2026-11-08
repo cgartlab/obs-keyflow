@@ -1,5 +1,7 @@
-' obs-keyflow —— 静默启动服务（无控制台窗口，可放进「启动」文件夹）
-' 已有实例在运行时，新实例检测到健康探针会自行退出，不会重复挂钩子。
+' obs-keyflow - silent launcher (no console window). Put it in the Startup folder.
+' English-only comments on purpose: Windows Script Host reads .vbs as ANSI and
+' non-ASCII comments can break parsing on some locales.
+' If an instance is already running, the new one exits on its own (health probe).
 Option Explicit
 
 Dim fso, sh, scriptDir, repoRoot, pyw, candidate, folder, pyRoot
@@ -21,13 +23,13 @@ If fso.FolderExists(pyRoot) Then
     Next
 End If
 
-' 2) py 启动器的 pyw.exe
+' 2) py launcher's pyw.exe
 If pyw = "" Then
     candidate = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Programs\Python\Launcher\pyw.exe"
     If fso.FileExists(candidate) Then pyw = candidate
 End If
 
-' 3) 交给 PATH
+' 3) fall back to PATH
 If pyw = "" Then pyw = "pythonw.exe"
 
 sh.CurrentDirectory = repoRoot

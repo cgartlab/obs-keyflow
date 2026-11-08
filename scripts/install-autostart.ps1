@@ -1,4 +1,4 @@
-# 把 obs-keyflow 加入当前用户的开机启动（写入「启动」文件夹快捷方式）。
+﻿# 把 obs-keyflow 加入当前用户的开机启动（写入「启动」文件夹快捷方式）。
 #   .\install-autostart.ps1           安装
 #   .\install-autostart.ps1 -Remove   移除
 param([switch]$Remove)

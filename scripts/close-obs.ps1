@@ -1,4 +1,4 @@
-# 干净关闭 OBS Studio（处理"确认退出"对话框），用于脚本化重启 OBS。
+﻿# 干净关闭 OBS Studio（处理"确认退出"对话框），用于脚本化重启 OBS。
 #   .\close-obs.ps1           正常关闭，最多等 20 秒
 #   .\close-obs.ps1 -Timeout 40
 #   .\close-obs.ps1 -Force    等待超时后强制结束
