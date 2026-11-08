@@ -97,6 +97,7 @@ python scripts/add-obs-source.py --full-canvas --anchor br --margin 60
 | `?size=64` | 键帽尺寸 px | 64 |
 | `?gap=10` | 键帽间距 px | 10 |
 | `?demo=1` | 静态样张：不按键也常驻几枚示例键帽，用来调位置/看效果 | 关闭 |
+| `?w=1060` | 仅 `mode=full`：整块键盘的面板宽度（px） | 1060 |
 | `?mode=full` | 切换成整块键盘样式 | recent |
 | `?history=1` | 仅 `mode=full`：额外显示按键历史串 | 关闭 |
 | `?debug=1` | 左上角显示连接状态点（绿=已连，红=断开） | 关闭 |

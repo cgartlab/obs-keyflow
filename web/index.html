@@ -20,6 +20,8 @@
 -->
 <style>
   :root {
+    --u: 64px;                        /* 整块键盘的单元宽度（由 JS 按面板宽算） */
+    --kh: calc(var(--u) * 0.60);      /* 键高，随单元宽度等比 */
     --n-size: 64px;
     --gap: 10px;
     --pad: 12px;
@@ -220,6 +222,7 @@
     return 'bc';
   }
 
+  const PANEL_W = Math.max(320, parseInt(qs.get('w') || '1060', 10) || 1060);
   const ANCHOR = parseAnchor(qs.get('anchor'));
   const rawMargin = qs.has('margin') ? qs.get('margin') : qs.get('bottom');
   const MARGIN = Math.max(0, parseInt(rawMargin ?? '44', 10) || 0);
@@ -550,6 +553,7 @@
       }
       keysEl.appendChild(r);
     }
+    dock.style.width = PANEL_W + 'px';   // 整块键盘需要确定的宽度基准
     if (!SHOW_HISTORY) { histEl.style.display = 'none'; histEl.style.marginBottom = '0'; }
     const fit = () => root.style.setProperty('--u', (keysEl.clientWidth / 15) + 'px');
     fit();
