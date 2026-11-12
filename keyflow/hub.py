@@ -18,6 +18,8 @@ class Hub:
         self._lock = threading.RLock()
         self._pressed: dict[str, int] = {}   # key id -> vk code (for reconciliation)
         self._subs: set[queue.Queue] = set()
+        self.resync_count = 0                # 因客户端积压而补发全量快照的次数
+        self.subscribe_count = 0             # 累计 SSE 订阅次数（页面重载会 +1，用于诊断）
 
     # ------------------------------------------------------------ mutation
     def key_down(self, key_id: str, vk: int | None = None) -> bool:
@@ -71,6 +73,7 @@ class Hub:
         q: queue.Queue = queue.Queue(maxsize=512)
         with self._lock:
             self._subs.add(q)
+            self.subscribe_count += 1
         return q
 
     def unsubscribe(self, q: queue.Queue) -> None:
@@ -84,7 +87,22 @@ class Hub:
             try:
                 q.put_nowait(payload)
             except queue.Full:
-                pass                      # slow client must never stall the hook
+                # 慢客户端不能拖住钩子；但直接丢事件会让它永远停在旧状态
+                #（典型表现：画面上一直残留一个"按住"的键帽）。
+                # 正确做法是丢掉积压、改发一份全量快照，客户端收到 snap 后会整体校正。
+                self._resync(q)
+
+    def _resync(self, q: queue.Queue) -> None:
+        try:
+            while True:
+                q.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            q.put_nowait(self.snapshot())
+            self.resync_count += 1
+        except queue.Full:
+            pass
 
     @property
     def subscriber_count(self) -> int:

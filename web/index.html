@@ -319,6 +319,10 @@
   const TTL_MS = Math.max(500, parseInt(qs.get('ttl') || '3000', 10) || 3000);
   const FADE_MS = Math.max(150, Math.min(TTL_MS, parseInt(qs.get('fade') || '450', 10) || 450));
   const TICK_MS = 33;
+  // 兜底：单枚键帽"按住"最多保留多久（?hold=秒 可调，默认 60 秒）
+  const HOLD_MAX_MS = Math.max(1000, (parseFloat(qs.get('hold') || '60') || 60) * 1000);
+  const RESYNC_MS = 2000;                                     // 有键帽处于"按住"时，向服务端核对的间隔
+  const RELOAD_MIN = Math.max(0, parseFloat(qs.get('reload') || '0') || 0);  // 自动刷新周期(分钟)，0=关闭
 
   const entries = [];   // { parts, held, closed, ids, expires, el }
   const MOD_RANK = {
@@ -378,7 +382,17 @@
     let maxTail = 0;
     for (let i = entries.length - 1; i >= 0; i--) {
       const e = entries[i];
-      if (e.held) e.expires = now + TTL_MS;      // 按住期间不计时
+      if (e.held) {
+        if (!e.heldAt) e.heldAt = now;
+        if (now - e.heldAt > HOLD_MAX_MS) {
+          // 异常"按住"（丢了 keyup / 传输丢包）不能无限期留在画面上
+          e.held = false;
+          e.heldAt = 0;
+        }
+        e.expires = now + TTL_MS;                // 正常按住期间不计时
+      } else if (e.heldAt) {
+        e.heldAt = 0;
+      }
       const remain = e.expires - now;
       if (remain <= 0) {
         if (e.el) e.el.remove();
@@ -413,6 +427,7 @@
       if (gone.el) gone.el.remove();
     }
     startTicker();
+    ensureResync();
   }
 
   function onDown(id) {
@@ -479,6 +494,59 @@
     stopTicker();
     dock.classList.remove('show');
     scheduleFit();
+  }
+
+  // ---------- 自愈：定期与服务端核对，清掉卡住的键帽 ----------
+  // 残留"一个按键"的根本原因：某枚键帽处于 held 状态，而对应的 keyup 事件
+  // 因为断线/丢包/服务重启没有送达。这里用 /state 做权威校对，对不上就释放。
+  let resyncTimer = null;
+
+  function ensureResync() {
+    if (!resyncTimer && MODE === 'recent') resyncTimer = setInterval(resyncOnce, RESYNC_MS);
+  }
+  function stopResync() {
+    if (resyncTimer) { clearInterval(resyncTimer); resyncTimer = null; }
+  }
+  async function resyncOnce() {
+    if (!entries.length) { stopResync(); return; }
+    if (!entries.some((e) => e.held)) return;      // 没有"按住"的键，无需核对
+    try {
+      const resp = await fetch('/state', { cache: 'no-store' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const pressed = new Set(data.pressed || []);
+      const now = performance.now();
+      let changed = false;
+      for (const e of entries) {
+        if (!e.held) continue;
+        const stillDown = (e.ids && e.ids.length)
+          ? e.ids.some((id) => pressed.has(id))
+          : true;                                   // 样张等无 id 的条目跳过核对
+        if (!stillDown) {
+          e.held = false;
+          e.heldAt = 0;
+          e.expires = now + TTL_MS;
+          changed = true;
+        }
+      }
+      if (changed) paint();
+    } catch (err) {
+      // 服务不可达：本地状态已不可信，直接清屏，别把"按住"永远留在画面上
+      clearRecent();
+    }
+  }
+
+  // ---------- 自动刷新缓存（?reload=分钟，0=关闭） ----------
+  // 只在画面上没有键帽时刷新，避免录制时闪断；刷新会带时间戳绕过缓存。
+  if (RELOAD_MIN > 0) {
+    const startedAt = Date.now();
+    setInterval(() => {
+      if (Date.now() - startedAt < RELOAD_MIN * 60000) return;
+      if (entries.length) return;
+      const url = new URL(location.href);
+      url.searchParams.set('_r', String(Date.now()));
+      location.replace(url.toString());
+    }, 1000);
   }
 
   // ---------- 模式二：整块键盘 ----------

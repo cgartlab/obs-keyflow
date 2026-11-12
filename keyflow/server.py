@@ -108,6 +108,8 @@ class Handler(BaseHTTPRequestHandler):
                 "version": __version__,
                 "pressed": self.hub.pressed,
                 "clients": self.hub.subscriber_count,
+                "subscribes": self.hub.subscribe_count,
+                "resyncs": self.hub.resync_count,
             })
         elif path.startswith("/assets/"):
             self._send_file(path.lstrip("/"))

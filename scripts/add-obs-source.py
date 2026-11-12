@@ -26,7 +26,7 @@ import uuid
 from pathlib import Path
 
 DEFAULT_URL = "http://127.0.0.1:16900/"
-WIDGET_URL = "http://127.0.0.1:16900/?fit=1"
+WIDGET_URL = "http://127.0.0.1:16900/?fit=1&reload=30"   # 部件模式 + 30 分钟自动刷新缓存
 SOURCE_NAME = "按键显示"
 
 

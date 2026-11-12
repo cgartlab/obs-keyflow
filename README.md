@@ -96,6 +96,8 @@ python scripts/add-obs-source.py --full-canvas --anchor br --margin 60
 | `?margin=44` | 距吸附边缘的像素距离（`?bottom=` 保留为兼容写法，等价） | 44 |
 | `?size=64` | 键帽尺寸 px | 64 |
 | `?gap=10` | 键帽间距 px | 10 |
+| `?reload=30` | 自动刷新缓存：每隔 N 分钟（仅在画面无键帽时）强制重载页面，0=关闭 | 0 |
+| `?hold=60` | 兜底：单枚键帽最多保持"按住"多少秒后自动释放 | 60 |
 | `?demo=1` | 静态样张：不按键也常驻几枚示例键帽，用来调位置/看效果 | 关闭 |
 | `?w=1060` | 仅 `mode=full`：整块键盘的面板宽度（px） | 1060 |
 | `?mode=full` | 切换成整块键盘样式 | recent |
@@ -147,7 +149,7 @@ python -m keyflow [--host 127.0.0.1] [--port 16900] [--console]
 {"t":"key","k":"a","d":true}                     // d=true 按下, false 抬起
 ```
 
-`GET /state` 返回同样的快照；`GET /healthz` 返回服务信息。键位 id 是稳定契约（`a`、`5`、
+`GET /state` 返回同样的快照；`GET /healthz` 返回服务信息，其中 `clients` / `subscribes` / `resyncs` 可用于诊断（`resyncs` 增长说明曾发生事件积压并补发了全量快照）。键位 id 是稳定契约（`a`、`5`、
 `enter`、`shiftleft`、`controlright`、`f5`、`numpad1`、`arrowup`、`volumeup` …）。
 
 ## 架构

@@ -66,6 +66,21 @@ class HubTests(unittest.TestCase):
             self.hub.key_down(f"k{i}", 0x41 + i)
         self.assertEqual(q.qsize(), 1)                          # 背压丢弃而不是阻塞
 
+    def test_overflow_resyncs_with_snapshot(self):
+        """客户端积压时不能只丢事件，必须补一份全量快照，否则会永远停在旧状态。"""
+        q = queue.Queue(maxsize=2)
+        self.hub._subs.add(q)
+        self.hub.key_down("a", 0x41)
+        self.hub.key_down("b", 0x42)
+        self.hub.key_down("c", 0x43)          # 队列已满 -> 丢积压 + 补快照
+        items = []
+        while not q.empty():
+            items.append(q.get_nowait())
+        self.assertEqual(len(items), 1, "积压应被替换成一份快照")
+        self.assertEqual(items[0]["t"], "snap")
+        self.assertEqual(items[0]["pressed"], ["a", "b", "c"])
+        self.assertGreaterEqual(self.hub.resync_count, 1)
+
     def test_release_all(self):
         for key in ("a", "b", "c"):
             self.hub.key_down(key, 0x41)
