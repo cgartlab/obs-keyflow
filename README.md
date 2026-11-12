@@ -31,7 +31,7 @@ No OBS plugin, no version ABI coupling, no telemetry, no third-party packages.
 前置：**OBS Studio**（任意较新版本）＋ **Python 3.10+**。
 
 ```powershell
-git clone <repo-url> obs-keyflow
+git clone https://github.com/cgartlab/obs-keyflow.git
 cd obs-keyflow
 
 # 1) 启动服务（前台可见日志；后台静默用 scripts\start.vbs）
